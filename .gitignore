@@ -1,0 +1,22 @@
+# Credentials
+.env
+.upload_pypi.txt
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
