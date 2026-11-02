@@ -2,9 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name="sythonlab_kiu_rest_sdk",
-    version="0.0.1",
+    version="0.0.2",
     packages=find_packages(), install_requires=[
-        "requests>=2.31",
+        "requests>=2.27",
     ],
     python_requires=">=3.9",
     url="https://github.com/sythonlab/SythonLab-Kiu-Rest-Sdk",
