@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="sythonlab_kiu_rest_sdk",
-    version="0.0.2",
+    version="0.0.3",
     packages=find_packages(), install_requires=[
         "requests>=2.27",
     ],

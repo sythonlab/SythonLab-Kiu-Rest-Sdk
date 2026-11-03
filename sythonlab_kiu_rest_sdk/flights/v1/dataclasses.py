@@ -54,8 +54,22 @@ class FlightQuoteSegment:
 
 
 @dataclass
+class BookingInfant:
+    """An infant travelling on the lap of an adult: KIU needs its birth date for the INFT special service."""
+
+    name: str
+    surname: str
+    foid_type: str
+    foid_id: str
+    date_of_birth: date
+
+
+@dataclass
 class BookingPassenger:
-    """A passenger to book: reference_order relates them to the contact information (1, 2...)."""
+    """
+    A passenger to book: reference_order relates them to the contact information (1, 2...). An infant is not a
+    passenger of its own but the infant of the adult it travels with: KIU numbers it right after that adult.
+    """
 
     reference_order: int
     name: str
@@ -64,6 +78,8 @@ class BookingPassenger:
     foid_type: str
     foid_id: str
     kind: PassengerType
+    date_of_birth: Optional[date] = None
+    infant: Optional[BookingInfant] = None
 
 
 @dataclass
