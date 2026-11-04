@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional, Dict, Any, Callable, List, Mapping
 from uuid import uuid4
 
@@ -99,10 +99,14 @@ class KiuFlightSDK:
             logger.debug("Headers: %s", {**headers, "KIU-API-Token": "***"})
             logger.debug("Payload: %s", payload)
 
-        if method == RequestMethod.POST:
-            response = requests.post(url, json=payload, headers=headers, timeout=timeout)
-        else:
+        if method != RequestMethod.POST:
             raise ValueError("Unsupported request method")
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        except requests.exceptions.RequestException as error:
+            # KIU did not answer (timeout, connection): an error answer as KIU gives them, not an exception
+            logger.error("KIU request %s to %s failed: %s", request_id, url, error)
+            return 503, {"exception": error.__class__.__name__, "message": str(error)}
 
         end = datetime.now(timezone.utc)
 
@@ -193,7 +197,8 @@ class KiuFlightSDK:
                         },
                         "extra_search_criteria": {
                             "show_summary_rbd": True,
-                            "direct_flights_only": direct_flights_only
+                            # KIU reads it as text: a JSON true fails ("'bool' object has no attribute 'lower'")
+                            "direct_flights_only": "true" if direct_flights_only else "false"
                         }
                     }
                     for i, item in enumerate(itinerary)
@@ -346,18 +351,7 @@ class KiuFlightSDK:
             "date_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "echo_token": echo_token or request_id,
             "point_of_sale": self.pos,
-            "passenger_information": [
-                {
-                    "passenger_reference_order": passenger.reference_order,
-                    "surname": passenger.surname,
-                    "name": passenger.name,
-                    "gender": passenger.gender,
-                    "foid_type": passenger.foid_type,
-                    "foid_id": passenger.foid_id,
-                    "passenger_type_code": passenger.kind.value,
-                }
-                for passenger in passengers
-            ],
+            "passenger_information": [self.booking_passenger(passenger) for passenger in passengers],
             "air_itinerary_information": [
                 {
                     "order": segment.order,
@@ -369,7 +363,9 @@ class KiuFlightSDK:
                     "arrival_information": {
                         "location_code": segment.arrival_iata_code
                     },
-                    "flight_number": int(segment.flight_number),
+                    # A number as KIU shows it; one with letters goes as it is
+                    "flight_number": int(segment.flight_number) if str(segment.flight_number).isdigit()
+                    else segment.flight_number,
                     "reservation_booking_designator_code": segment.rbd,
                     "number_in_party": segment.number_in_party,
                     "carrier": segment.carrier,
@@ -388,6 +384,21 @@ class KiuFlightSDK:
             payload["remarks_list"] = [
                 {"order": index, "remark_type": "I.", "text": text} for index, text in enumerate(remarks, start=1)
             ]
+        # An infant needs, besides its adult, the INFT special service in every flight with its name and birth date
+        segment_orders = [segment.order for segment in segments]
+        infants = [passenger for passenger in passengers if passenger.infant]
+        if infants:
+            payload["services_list"] = [
+                {
+                    "order": index,
+                    "passenger_reference_order_association": passenger.reference_order,
+                    "flight_itinerary_order_association": segment_orders,
+                    "booking_instructions": {"type": "SSR", "code": "INFT"},
+                    "service_free_text": "%s/%s %s" % (passenger.infant.surname, passenger.infant.name,
+                                                       self.kiu_date(passenger.infant.date_of_birth)),
+                }
+                for index, passenger in enumerate(infants, start=1)
+            ]
 
         return self.request(
             request_id=request_id,
@@ -397,6 +408,33 @@ class KiuFlightSDK:
             timeout=timeout,
             kind=FlightResultKind.CREATE_BOOKING
         )
+
+    @staticmethod
+    def kiu_date(value: date):
+        """A date as KIU writes it in the reservations: 10MAR26"""
+        return value.strftime("%d%b%y").upper()
+
+    def booking_passenger(self, passenger: BookingPassenger):
+        data = {
+            "passenger_reference_order": passenger.reference_order,
+            "surname": passenger.surname,
+            "name": passenger.name,
+            "gender": passenger.gender,
+            "foid_type": passenger.foid_type,
+            "foid_id": passenger.foid_id,
+            "passenger_type_code": passenger.kind.value,
+        }
+        if passenger.date_of_birth:
+            data["date_of_birth"] = self.kiu_date(passenger.date_of_birth)
+        if passenger.infant:
+            data["associate_infant"] = {
+                "surname": passenger.infant.surname,
+                "name": passenger.infant.name,
+                "foid_type": passenger.infant.foid_type,
+                "foid_id": passenger.infant.foid_id,
+                "date_of_birth": self.kiu_date(passenger.infant.date_of_birth),
+            }
+        return data
 
     def issue_tickets(
             self,
