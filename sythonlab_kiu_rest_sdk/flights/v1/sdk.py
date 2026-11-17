@@ -322,6 +322,7 @@ class KiuFlightSDK:
             segments: List[BookingSegment],
             phones: List[BookingPhone],
             *,
+            emails: Optional[List[str]] = None,
             address: Optional[Dict[str, Any]] = None,
             remarks: Optional[List[str]] = None,
             auto_cancel: bool = True,
@@ -344,6 +345,9 @@ class KiuFlightSDK:
                 for phone in phones
             ]
         }
+        # Some carriers reject the booking without a contact email (8126 - CONTACT MAIL NEEDED)
+        if emails:
+            contact_information["email_list"] = [{"email_address": email} for email in emails]
         if address:
             contact_information["address_information"] = {"residence": address}
 
